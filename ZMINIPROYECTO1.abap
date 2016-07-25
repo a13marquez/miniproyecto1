@@ -22,7 +22,8 @@ TYPES: BEGIN OF ty_vuelos_compania,
          END OF ty_vuelos_compania.
 
 DATA: gt_vuelos_compania    TYPE STANDARD TABLE OF ty_vuelos_compania,
-      gr_salv               TYPE REF TO CL_SALV_TABLE.
+      gr_salv               TYPE REF TO CL_SALV_TABLE,
+      ls_compania           TYPE s_carr_id.
 
 CLASS lcl_manejador DEFINITION.
   PUBLIC SECTION.
@@ -34,7 +35,7 @@ ENDCLASS.
 
 CLASS lcl_manejador IMPLEMENTATION.
   METHOD manejar_doble_click.
-    DATA: ls_compania TYPE s_carr_id.
+
     READ TABLE gt_vuelos_compania
       INTO ls_compania
       INDEX row.
@@ -116,10 +117,6 @@ START-OF-SELECTION.
             <vuelo_compania>-COMPANIA = <COMPANIA>-COMPANIA.
         ENDLOOP.
     ENDLOOP.
-
-
-
-
  ENDFORM.
  FORM obtenerSalv
               USING gt_vuelos_compania lr_salv LIKE gr_salv.
@@ -219,7 +216,53 @@ START-OF-SELECTION.
 
    GR_SALV->DISPLAY( ).
  ENDFORM.
- 
- PERFORM mostrarInfoCompania
+
+ FORM mostrarInfoCompania
                         USING ls_compania.
+
+  TYPES: BEGIN OF ty_compania_precio,
+            id_compania TYPE s_carr_id,
+            compania    TYPE s_carrname,
+          END OF ty_compania_precio,
+          BEGIN OF ty_vuelo_precio,
+            id_compania TYPE s_carr_id,
+            importe     TYPE s_price,
+            moneda      TYPE s_currcode,
+          END OF ty_vuelo_precio,
+          BEGIN OF ty_vuelos_compania_precio,
+            id_compania TYPE s_carr_id,
+            compania    TYPE s_carrname,
+            importe     TYPE s_price,
+            moneda      TYPE s_currcode,
+          END OF ty_vuelos_compania_precio.
+
+
+  DATA: lt_compania_precio        TYPE STANDARD TABLE OF ty_compania_precio,
+        lt_vuelos_precio          TYPE STANDARD TABLE OF ty_vuelo_precio,
+        lt_vuelos_compania_precio TYPE STANDARD TABLE OF ty_vuelos_compania_precio.
+
+  FIELD-SYMBOLS: <compania_precio>        LIKE LINE OF lt_compania_precio,
+                 <vuelo_precio>           LIKE LINE OF lt_vuelos_precio,
+                 <vuelo_compania_precio>  LIKE LINE OF lt_vuelos_compania_precio.
+
+
+  SELECT carrid carrname
+      INTO TABLE lt_compania_precio
+      FROM scarr.
+
+  SELECT carrid price currency
+      INTO TABLE  lt_vuelos_precio
+      FROM sflight.
+
+  LOOP AT lt_vuelos_precio ASSIGNING <vuelo_precio>.
+      APPEND INITIAL LINE TO lt_vuelos_compania_precio ASSIGNING <vuelo_compania_precio>.
+        <vuelo_compania_precio>-ID_COMPANIA = <vuelo_precio>-ID_COMPANIA.
+        <vuelo_compania_precio>-IMPORTE = <vuelo_precio>-IMPORTE.
+        <vuelo_compania_precio>-MONEDA = <vuelo_precio>-MONEDA.
+        LOOP AT lt_compania_precio ASSIGNING <compania_precio>
+          WHERE ID_COMPANIA = <vuelo_compania_precio>-ID_COMPANIA.
+            <vuelo_compania_precio>-COMPANIA = <compania_precio>-COMPANIA.
+        ENDLOOP.
+    ENDLOOP.
+
  ENDFORM.
