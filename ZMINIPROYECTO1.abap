@@ -23,7 +23,10 @@ TYPES: BEGIN OF ty_vuelos_compania,
 
 DATA: gt_vuelos_compania    TYPE STANDARD TABLE OF ty_vuelos_compania,
       gr_salv               TYPE REF TO CL_SALV_TABLE,
-      ls_compania           TYPE s_carr_id.
+      ls_compania           TYPE s_carr_id,
+      ls_conexion           TYPE s_conn_id.
+
+FIELD-SYMBOLS: <g_vuelo> LIKE LINE OF gt_vuelos_compania.
 
 CLASS lcl_manejador DEFINITION.
   PUBLIC SECTION.
@@ -35,14 +38,17 @@ ENDCLASS.
 
 CLASS lcl_manejador IMPLEMENTATION.
   METHOD manejar_doble_click.
-
     READ TABLE gt_vuelos_compania
-      INTO ls_compania
-      INDEX row.
-    IF column = 'COMPANIA'.
+        ASSIGNING <g_vuelo>
+        INDEX row.
+     CASE column.
+     WHEN 'COMPANIA'.
       PERFORM mostrarInfoCompania
-                        USING ls_compania.
-    ENDIF.
+                      USING <g_vuelo>-ID_COMPANIA.
+     WHEN 'NUM_CONEXION'.
+       PERFORM mostrarInfoConexion
+                      USING <g_vuelo>-NUM_CONEXION.
+    ENDCASE.
 
   ENDMETHOD.
 ENDCLASS.
@@ -174,7 +180,29 @@ START-OF-SELECTION.
    CATCH cx_salv_not_found.
    ENDTRY.
 
-   "Se ordenan las compañias y se crean subtotales
+   TRY.
+     lr_columna ?= lr_columnas->GET_COLUMN('DISTANCIA').
+     lr_columna->SET_QUANTITY_COLUMN( VALUE = 'UNIDAD_DISTANCIA' ).
+   CATCH CX_SALV_DATA_ERROR.    " ALV: General Error Class (Checked During Syntax Check).
+   CATCH cx_salv_not_found.
+   ENDTRY.
+   "Se agrega por unidad de distancia
+   lr_aggregations = lr_salv->GET_AGGREGATIONS( ).
+   TRY.
+    CALL METHOD lr_aggregations->ADD_AGGREGATION
+      exporting
+        COLUMNNAME  =   'DISTANCIA'  " ALV Control: Field Name of Internal Table Field
+        AGGREGATION = IF_SALV_C_AGGREGATION=>TOTAL    " Aggregation
+      receiving
+        VALUE       = lr_columna_agregada    " ALV: Aggregations
+      .
+      lr_aggregations->SET_AGGREGATION_BEFORE_ITEMS( ).
+      CATCH CX_SALV_DATA_ERROR.    " ALV: General Error Class (Checked During Syntax Check)
+      CATCH CX_SALV_NOT_FOUND.    " ALV: General Error Class (Checked During Syntax Check)
+      CATCH CX_SALV_EXISTING.    " ALV: General Error Class (Checked During Syntax Check)
+   ENDTRY.
+
+  "Se ordenan las compañias y se crean subtotales
    lr_sorts = lr_salv->GET_SORTS( ).
    TRY.
      CALL METHOD lr_sorts->ADD_SORT
@@ -192,24 +220,6 @@ START-OF-SELECTION.
      CATCH cx_salv_data_error .
    ENDTRY.
 
-   "Se agrega por unidad de distancia
-   lr_aggregations = lr_salv->GET_AGGREGATIONS( ).
-   TRY.
-    CALL METHOD lr_aggregations->ADD_AGGREGATION
-      exporting
-        COLUMNNAME  =   'DISTANCIA'  " ALV Control: Field Name of Internal Table Field
-        AGGREGATION = IF_SALV_C_AGGREGATION=>TOTAL    " Aggregation
-      receiving
-        VALUE       = lr_columna_agregada    " ALV: Aggregations
-      .
-      lr_aggregations->SET_AGGREGATION_BEFORE_ITEMS( ).
-      CATCH CX_SALV_DATA_ERROR.    " ALV: General Error Class (Checked During Syntax Check)
-      CATCH CX_SALV_NOT_FOUND.    " ALV: General Error Class (Checked During Syntax Check)
-      CATCH CX_SALV_EXISTING.    " ALV: General Error Class (Checked During Syntax Check)
-
-
-   ENDTRY.
-
    lr_eventos = gr_salv->GET_EVENT( ).
    CREATE OBJECT gr_manejador_eventos.
    SET HANDLER gr_manejador_eventos->manejar_doble_click FOR lr_eventos.
@@ -219,6 +229,15 @@ START-OF-SELECTION.
 
  FORM mostrarInfoCompania
                         USING ls_compania.
+   DATA: lr_columnas          TYPE REF TO cl_salv_columns_table,
+         lr_columna           TYPE REF TO cl_salv_column_table,
+         lr_color             TYPE lvc_s_colo,
+         lr_sorts             TYPE REF TO cl_salv_sorts,
+         lr_columna_sort      TYPE REF TO cl_salv_sort,
+         lr_aggregations      TYPE REF TO cl_salv_aggregations,
+         lr_columna_agregada  TYPE REF TO cl_salv_aggregation,
+         lr_eventos           TYPE REF TO cl_salv_events_table.
+
 
   TYPES: BEGIN OF ty_compania_precio,
             id_compania TYPE s_carr_id,
@@ -248,11 +267,11 @@ START-OF-SELECTION.
 
   SELECT carrid carrname
       INTO TABLE lt_compania_precio
-      FROM scarr.
+      FROM scarr WHERE scarr~carrid = ls_compania.
 
   SELECT carrid price currency
       INTO TABLE  lt_vuelos_precio
-      FROM sflight.
+      FROM sflight WHERE sflight~carrid = ls_compania.
 
   LOOP AT lt_vuelos_precio ASSIGNING <vuelo_precio>.
       APPEND INITIAL LINE TO lt_vuelos_compania_precio ASSIGNING <vuelo_compania_precio>.
@@ -264,5 +283,92 @@ START-OF-SELECTION.
             <vuelo_compania_precio>-COMPANIA = <compania_precio>-COMPANIA.
         ENDLOOP.
     ENDLOOP.
+
+    TRY .
+    CL_SALV_TABLE=>FACTORY(
+    exporting
+      LIST_DISPLAY   = IF_SALV_C_BOOL_SAP=>FALSE    " ALV Displayed in List Mode=
+    importing
+      R_SALV_TABLE   =  gr_salv   " Basis Class Simple ALV Tables
+    changing
+      T_TABLE        =  lt_vuelos_compania_precio
+  ).
+  CATCH CX_SALV_MSG.    " ALV: General Error Class with Message.
+
+  ENDTRY.
+  "Se añade la barra de tareas con todos los botones
+   gr_salv->GET_FUNCTIONS( )->SET_ALL( ).
+  "Se añade el título
+   gr_salv->GET_DISPLAY_SETTINGS( )->SET_LIST_HEADER( 'Suma total por compañia' ).
+
+
+  "Se obtienen las columnas para los cambios que hay que realizar en ellas
+   lr_columnas = gr_salv->GET_COLUMNS( ).
+  "Se ajusta el ancho al contenido
+   lr_columnas->SET_OPTIMIZE( ).
+
+  "Se oculta la columna con el id de compañia
+    TRY.
+     lr_columna ?= lr_columnas->GET_COLUMN('ID_COMPANIA').
+     lr_columna->SET_VISIBLE( value  = if_salv_c_bool_sap=>false ).
+   CATCH cx_salv_not_found.
+   ENDTRY.
+
+
+  "Se añade el color rojo a la columna del numero de conexion
+   TRY.
+     lr_columna ?= lr_columnas->GET_COLUMN('COMPANIA').
+     lr_color-col = 5.
+     lr_columna->SET_COLOR( lr_color ).
+   CATCH cx_salv_not_found.
+   ENDTRY.
+
+  TRY.
+     lr_columna ?= lr_columnas->GET_COLUMN('IMPORTE').
+     lr_columna->SET_CURRENCY_COLUMN( 'MONEDA'  ).
+   CATCH CX_SALV_NOT_FOUND.    " ALV: General Error Class (Checked During Syntax Check)
+   CATCH CX_SALV_DATA_ERROR.    " ALV: General Error Class (Checked During Syntax Check).
+   ENDTRY.
+
+  "Se ordenan las compañias y se crean subtotales
+   lr_sorts = gr_salv->GET_SORTS( ).
+   TRY.
+     CALL METHOD lr_sorts->ADD_SORT
+       exporting
+         COLUMNNAME =  'COMPANIA'   " ALV Control: Field Name of Internal Table Field
+       receiving
+         VALUE      =  lr_columna_sort   " ALV Sort Settings
+       .
+     CALL METHOD lr_columna_sort->SET_SUBTOTAL
+       exporting
+         VALUE = IF_SALV_C_BOOL_SAP=>TRUE    " Boolean Variable (X=True, Space=False)
+       .
+     CATCH cx_salv_not_found.
+     CATCH cx_salv_existing .
+     CATCH cx_salv_data_error .
+   ENDTRY.
+
+   "Se agrega por unidad de distancia
+   lr_aggregations = gr_salv->GET_AGGREGATIONS( ).
+   TRY.
+    CALL METHOD lr_aggregations->ADD_AGGREGATION
+      exporting
+        COLUMNNAME  =   'IMPORTE'  " ALV Control: Field Name of Internal Table Field
+        AGGREGATION = IF_SALV_C_AGGREGATION=>TOTAL    " Aggregation
+      receiving
+        VALUE       = lr_columna_agregada    " ALV: Aggregations
+      .
+      lr_aggregations->SET_AGGREGATION_BEFORE_ITEMS( ).
+      CATCH CX_SALV_DATA_ERROR.    " ALV: General Error Class (Checked During Syntax Check)
+      CATCH CX_SALV_NOT_FOUND.    " ALV: General Error Class (Checked During Syntax Check)
+      CATCH CX_SALV_EXISTING.    " ALV: General Error Class (Checked During Syntax Check)
+
+
+   ENDTRY.
+
+  GR_SALV->DISPLAY( ).
+ ENDFORM.
+ FORM mostrarInfoConexion
+                      USING ls_conexion.
 
  ENDFORM.
