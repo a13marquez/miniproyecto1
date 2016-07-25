@@ -34,12 +34,13 @@ ENDCLASS.
 
 CLASS lcl_manejador IMPLEMENTATION.
   METHOD manejar_doble_click.
-    DATA: ls_itab TYPE s_carr_id.
+    DATA: ls_compania TYPE s_carr_id.
     READ TABLE gt_vuelos_compania
-      INTO ls_itab
+      INTO ls_compania
       INDEX row.
     IF column = 'COMPANIA'.
-      MESSAGE i000(ok) WITH ls_itab.
+      PERFORM mostrarInfoCompania
+                        USING ls_compania.
     ENDIF.
 
   ENDMETHOD.
@@ -141,13 +142,14 @@ START-OF-SELECTION.
  ENDFORM.
  FORM configurarAlv
               CHANGING lr_salv LIKE gr_salv.
-   DATA: lr_columnas      TYPE REF TO cl_salv_columns_table,
-         lr_columna       TYPE REF TO cl_salv_column_table,
-         lr_color         TYPE lvc_s_colo,
-         lr_sorts         TYPE REF TO cl_salv_sorts,
-         lr_columna_sort  TYPE REF TO cl_salv_sort,
-         lr_aggregations  TYPE REF TO cl_salv_aggregations,
-         lr_eventos       type REF TO cl_salv_events_table.
+   DATA: lr_columnas          TYPE REF TO cl_salv_columns_table,
+         lr_columna           TYPE REF TO cl_salv_column_table,
+         lr_color             TYPE lvc_s_colo,
+         lr_sorts             TYPE REF TO cl_salv_sorts,
+         lr_columna_sort      TYPE REF TO cl_salv_sort,
+         lr_aggregations      TYPE REF TO cl_salv_aggregations,
+         lr_columna_agregada  TYPE REF TO cl_salv_aggregation,
+         lr_eventos           TYPE REF TO cl_salv_events_table.
 
   "Se añade la barra de tareas con todos los botones
    lr_salv->GET_FUNCTIONS( )->SET_ALL( ).
@@ -184,7 +186,10 @@ START-OF-SELECTION.
        receiving
          VALUE      =  lr_columna_sort   " ALV Sort Settings
        .
-     lr_columna_sort->SET_SUBTOTAL( ).
+     CALL METHOD lr_columna_sort->SET_SUBTOTAL
+       exporting
+         VALUE = IF_SALV_C_BOOL_SAP=>TRUE    " Boolean Variable (X=True, Space=False)
+       .
      CATCH cx_salv_not_found.
      CATCH cx_salv_existing .
      CATCH cx_salv_data_error .
@@ -195,7 +200,10 @@ START-OF-SELECTION.
    TRY.
     CALL METHOD lr_aggregations->ADD_AGGREGATION
       exporting
-        COLUMNNAME  = 'DISTANCIA'    " ALV Control: Field Name of Internal Table Field
+        COLUMNNAME  =   'DISTANCIA'  " ALV Control: Field Name of Internal Table Field
+        AGGREGATION = IF_SALV_C_AGGREGATION=>TOTAL    " Aggregation
+      receiving
+        VALUE       = lr_columna_agregada    " ALV: Aggregations
       .
       lr_aggregations->SET_AGGREGATION_BEFORE_ITEMS( ).
       CATCH CX_SALV_DATA_ERROR.    " ALV: General Error Class (Checked During Syntax Check)
@@ -210,4 +218,8 @@ START-OF-SELECTION.
    SET HANDLER gr_manejador_eventos->manejar_doble_click FOR lr_eventos.
 
    GR_SALV->DISPLAY( ).
+ ENDFORM.
+ 
+ PERFORM mostrarInfoCompania
+                        USING ls_compania.
  ENDFORM.
