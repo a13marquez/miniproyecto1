@@ -47,7 +47,7 @@ CLASS lcl_manejador IMPLEMENTATION.
                       USING <g_vuelo>-ID_COMPANIA.
      WHEN 'NUM_CONEXION'.
        PERFORM mostrarInfoConexion
-                      USING <g_vuelo>-NUM_CONEXION.
+                      USING <g_vuelo>-NUM_CONEXION .
     ENDCASE.
 
   ENDMETHOD.
@@ -231,8 +231,8 @@ START-OF-SELECTION.
                         USING ls_compania.
    DATA: lr_columnas          TYPE REF TO cl_salv_columns_table,
          lr_columna           TYPE REF TO cl_salv_column_table,
-         lr_color             TYPE lvc_s_colo,
          lr_sorts             TYPE REF TO cl_salv_sorts,
+         lr_color             TYPE lvc_s_colo,
          lr_columna_sort      TYPE REF TO cl_salv_sort,
          lr_aggregations      TYPE REF TO cl_salv_aggregations,
          lr_columna_agregada  TYPE REF TO cl_salv_aggregation,
@@ -296,10 +296,123 @@ START-OF-SELECTION.
   CATCH CX_SALV_MSG.    " ALV: General Error Class with Message.
 
   ENDTRY.
+
+
+  GR_SALV->DISPLAY( ).
+ ENDFORM.
+ FORM mostrarInfoConexion
+                      USING ls_conexion.
+   DATA: lr_columnas          TYPE REF TO cl_salv_columns_table,
+         lr_columna           TYPE REF TO cl_salv_column_table,
+         lr_columna1          TYPE REF TO cl_salv_column_table,
+         lr_row               TYPE  i,
+         lr_sorts             TYPE REF TO cl_salv_sorts,
+         lr_color             TYPE lvc_s_scol,
+         lr_columna_sort      TYPE REF TO cl_salv_sort,
+         lr_aggregations      TYPE REF TO cl_salv_aggregations,
+         lr_columna_agregada  TYPE REF TO cl_salv_aggregation,
+         lr_eventos           TYPE REF TO cl_salv_events_table.
+
+
+  TYPES: BEGIN OF ty_compania_asientos,
+            id_compania TYPE s_carr_id,
+            compania    TYPE s_carrname,
+          END OF ty_compania_asientos,
+          BEGIN OF ty_vuelo_asientos,
+            id_compania       TYPE s_carr_id,
+            turista_ocupado   TYPE s_seatsocc,
+            turista_total     TYPE s_seatsmax,
+            bussines_ocupado  TYPE s_socc_b,
+            bussines_total    TYPE s_smax_b,
+            primera_ocupado   TYPE s_socc_f,
+            primera_total     TYPE s_smax_f,
+          END OF ty_vuelo_asientos,
+          BEGIN OF ty_vuelos_compania_asientos,
+            id_compania         TYPE s_carr_id,
+            compania            TYPE s_carrname,
+            turista_ocupado     TYPE s_seatsocc,
+            turista_porcentaje  TYPE i,
+            bussines_ocupado    TYPE s_socc_b,
+            bussines_porcentaje TYPE i,
+            primera_ocupado     TYPE s_socc_f,
+            primera_porcentaje  TYPE s_smax_f,
+            color               TYPE lvc_t_scol,
+          END OF ty_vuelos_compania_asientos.
+
+
+  DATA: lt_compania_asientos        TYPE STANDARD TABLE OF ty_compania_asientos,
+        lt_vuelos_asientos          TYPE STANDARD TABLE OF ty_vuelo_asientos,
+        lt_vuelos_compania_asientos TYPE STANDARD TABLE OF ty_vuelos_compania_asientos.
+
+  FIELD-SYMBOLS: <compania_asientos>        LIKE LINE OF lt_compania_asientos,
+                 <vuelo_asientos>           LIKE LINE OF lt_vuelos_asientos,
+                 <vuelo_compania_asientos>  LIKE LINE OF lt_vuelos_compania_asientos.
+
+
+  SELECT carrid carrname
+      INTO TABLE lt_compania_asientos
+      FROM scarr.
+
+  SELECT carrid seatsocc seatsmax seatsocc_b seatsmax_b seatsocc_f seatsocc_b
+      INTO TABLE  lt_vuelos_asientos
+      FROM sflight WHERE sflight~connid = ls_conexion.
+
+  LOOP AT lt_vuelos_asientos ASSIGNING <vuelo_asientos>.
+      APPEND INITIAL LINE TO lt_vuelos_compania_asientos ASSIGNING <vuelo_compania_asientos>.
+        <vuelo_compania_asientos>-ID_COMPANIA = <vuelo_asientos>-ID_COMPANIA.
+        <vuelo_compania_asientos>-TURISTA_OCUPADO = <vuelo_asientos>-TURISTA_OCUPADO.
+        IF <vuelo_asientos>-TURISTA_OCUPADO = 0.
+          <vuelo_compania_asientos>-TURISTA_PORCENTAJE = 0.
+        ELSE.
+           <vuelo_compania_asientos>-TURISTA_PORCENTAJE = <vuelo_asientos>-TURISTA_TOTAL / <vuelo_asientos>-TURISTA_OCUPADO.
+        ENDIF.
+        <vuelo_compania_asientos>-BUSSINES_OCUPADO = <vuelo_asientos>-BUSSINES_OCUPADO.
+        IF <vuelo_asientos>-BUSSINES_OCUPADO = 0.
+          <vuelo_compania_asientos>-BUSSINES_PORCENTAJE = 0.
+        ELSE.
+          <vuelo_compania_asientos>-BUSSINES_PORCENTAJE = <vuelo_asientos>-BUSSINES_TOTAL / <vuelo_asientos>-BUSSINES_OCUPADO.
+        ENDIF.
+        <vuelo_compania_asientos>-PRIMERA_OCUPADO = <vuelo_asientos>-PRIMERA_OCUPADO.
+        IF <vuelo_asientos>-PRIMERA_OCUPADO = 0.
+          <vuelo_compania_asientos>-PRIMERA_PORCENTAJE = 0.
+        ELSE.
+          <vuelo_compania_asientos>-PRIMERA_PORCENTAJE = <vuelo_asientos>-PRIMERA_TOTAL / <vuelo_asientos>-PRIMERA_OCUPADO.
+        ENDIF.
+        LOOP AT lt_compania_asientos ASSIGNING <compania_asientos>
+          WHERE ID_COMPANIA = <vuelo_compania_asientos>-ID_COMPANIA.
+            <vuelo_compania_asientos>-COMPANIA = <compania_asientos>-COMPANIA.
+        ENDLOOP.
+    ENDLOOP.
+    "Se añade el color rojo a la columna del numero de conexion
+    LOOP AT lt_vuelos_compania_asientos ASSIGNING <vuelo_compania_asientos>.
+
+     IF <vuelo_compania_asientos>-TURISTA_PORCENTAJE > 2.
+     	  lr_color-fname     = 'TURISTA_OCUPADO'.
+        lr_color-color-col = 6.
+        APPEND lr_color TO <vuelo_compania_asientos>-color.
+     ELSE.
+       lr_color-fname     = 'TURISTA_OCUPADO'.
+        lr_color-color-col = 5.
+        APPEND lr_color TO <vuelo_compania_asientos>-color.
+     ENDIF.
+    ENDLOOP.
+
+    TRY .
+    CL_SALV_TABLE=>FACTORY(
+    exporting
+      LIST_DISPLAY   = IF_SALV_C_BOOL_SAP=>FALSE    " ALV Displayed in List Mode=
+    importing
+      R_SALV_TABLE   =  gr_salv   " Basis Class Simple ALV Tables
+    changing
+      T_TABLE        =  lt_vuelos_compania_asientos
+  ).
+  CATCH CX_SALV_MSG.    " ALV: General Error Class with Message.
+
+  ENDTRY.
   "Se añade la barra de tareas con todos los botones
    gr_salv->GET_FUNCTIONS( )->SET_ALL( ).
   "Se añade el título
-   gr_salv->GET_DISPLAY_SETTINGS( )->SET_LIST_HEADER( 'Suma total por compañia' ).
+   gr_salv->GET_DISPLAY_SETTINGS( )->SET_LIST_HEADER( 'Ocupación de asientos por conexión' ).
 
 
   "Se obtienen las columnas para los cambios que hay que realizar en ellas
@@ -308,27 +421,31 @@ START-OF-SELECTION.
    lr_columnas->SET_OPTIMIZE( ).
 
   "Se oculta la columna con el id de compañia
-    TRY.
+   TRY.
      lr_columna ?= lr_columnas->GET_COLUMN('ID_COMPANIA').
+     lr_columna->SET_VISIBLE( value  = if_salv_c_bool_sap=>false ).
+   CATCH cx_salv_not_found.
+   ENDTRY.
+   TRY.
+     lr_columna ?= lr_columnas->GET_COLUMN('TURISTA_PORCENTAJE').
+     lr_columna->SET_VISIBLE( value  = if_salv_c_bool_sap=>false ).
+   CATCH cx_salv_not_found.
+   ENDTRY.
+   TRY.
+     lr_columna ?= lr_columnas->GET_COLUMN('BUSSINES_PORCENTAJE').
+     lr_columna->SET_VISIBLE( value  = if_salv_c_bool_sap=>false ).
+   CATCH cx_salv_not_found.
+   ENDTRY.
+   TRY.
+     lr_columna ?= lr_columnas->GET_COLUMN('PRIMERA_PORCENTAJE').
      lr_columna->SET_VISIBLE( value  = if_salv_c_bool_sap=>false ).
    CATCH cx_salv_not_found.
    ENDTRY.
 
 
-  "Se añade el color rojo a la columna del numero de conexion
-   TRY.
-     lr_columna ?= lr_columnas->GET_COLUMN('COMPANIA').
-     lr_color-col = 5.
-     lr_columna->SET_COLOR( lr_color ).
-   CATCH cx_salv_not_found.
-   ENDTRY.
 
-  TRY.
-     lr_columna ?= lr_columnas->GET_COLUMN('IMPORTE').
-     lr_columna->SET_CURRENCY_COLUMN( 'MONEDA'  ).
-   CATCH CX_SALV_NOT_FOUND.    " ALV: General Error Class (Checked During Syntax Check)
-   CATCH CX_SALV_DATA_ERROR.    " ALV: General Error Class (Checked During Syntax Check).
-   ENDTRY.
+
+
 
   "Se ordenan las compañias y se crean subtotales
    lr_sorts = gr_salv->GET_SORTS( ).
@@ -350,25 +467,8 @@ START-OF-SELECTION.
 
    "Se agrega por unidad de distancia
    lr_aggregations = gr_salv->GET_AGGREGATIONS( ).
-   TRY.
-    CALL METHOD lr_aggregations->ADD_AGGREGATION
-      exporting
-        COLUMNNAME  =   'IMPORTE'  " ALV Control: Field Name of Internal Table Field
-        AGGREGATION = IF_SALV_C_AGGREGATION=>TOTAL    " Aggregation
-      receiving
-        VALUE       = lr_columna_agregada    " ALV: Aggregations
-      .
-      lr_aggregations->SET_AGGREGATION_BEFORE_ITEMS( ).
-      CATCH CX_SALV_DATA_ERROR.    " ALV: General Error Class (Checked During Syntax Check)
-      CATCH CX_SALV_NOT_FOUND.    " ALV: General Error Class (Checked During Syntax Check)
-      CATCH CX_SALV_EXISTING.    " ALV: General Error Class (Checked During Syntax Check)
 
-
-   ENDTRY.
 
   GR_SALV->DISPLAY( ).
- ENDFORM.
- FORM mostrarInfoConexion
-                      USING ls_conexion.
 
  ENDFORM.
